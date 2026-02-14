@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.2", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastapi-auth-prototype"
+authors = [
+    {name="Viktor Dick", email="viktor.dick@posteo.de"},
+]
+description = "fastAPI prototype"
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Operating System :: POSIX :: Linux",
+    "Framework :: FastAPI",
+]
+dependencies = [
+    "fastapi[standard]",
+    "psycopg[c]",
+    "sqlalchemy",
+]
+dynamic = ["version"]
+requires-python = ">=3.10"
+
+[project.scripts]
+
+[tool.distutils.bdist_wheel]
+universal = 1
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools_scm]
+
+[tool.ruff]
+line-length = 88
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
