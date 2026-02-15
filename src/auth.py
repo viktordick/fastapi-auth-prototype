@@ -1,4 +1,4 @@
-import os
+import uuid
 from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, Response
@@ -105,7 +105,7 @@ async def login(username: str, password: str, session: SessionDep, response: Res
         return {"success": False}
     login = AppUserLogin(
         appuser_id=user.id,
-        cookie=os.urandom(32).hex(),
+        cookie=uuid.uuid4(),
     )
     session.add(login)
     response.set_cookie(
