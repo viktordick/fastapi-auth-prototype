@@ -3,7 +3,7 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, Response
 from fastapi.security import APIKeyCookie
-from sqlalchemy import create_engine, not_, select
+from sqlalchemy import create_engine, not_, or_, select
 from sqlalchemy.orm import Session
 
 from .appuser import AppUser, AppUserLogin, Base
@@ -36,14 +36,33 @@ def process_auth(
     """
     Process authorization at the beginning of (essentially) every request.
     Compare user cookie against appuserlogin_cookie and appuserlogin_nextcookie.
-    If the user sent nextcookie,
+    If the user sent nextcookie, rotate them (assuming that from now on the old
+    cookie will no longer be sent). In any case, set the cookie to be used in
+    the future in the response (there was something about browsers sometimes no
+    longer sending a cookie if we don't remind them with every request that
+    this cookie is to be set).
     """
     stmt = select(AppUserLogin).where(
-        AppUserLogin.cookie == cookie, not_(AppUserLogin.done)
+        or_(AppUserLogin.cookie == cookie, AppUserLogin.nextcookie == cookie),
+        not_(AppUserLogin.done)
     )
     login: Optional[AppUserLogin] = session.scalars(stmt).one_or_none()
-    if login:
-        return login.user
+    if not login:
+        return
+    send_cookie = login.nextcookie or login.cookie
+    user = login.user
+    if cookie == login.nextcookie:
+        login.cookie = login.nextcookie
+        login.nextcookie = None
+        # We commit here, so the authentication phase and the payload phase are
+        # done in separate transactions.
+        session.commit()
+
+    response.set_cookie(
+        key="__user_cookie", value=send_cookie, httponly=True, secure=True,
+        samesite="strict"
+    )
+    return user
 
 
 Auth = Annotated[Optional[AppUser], Depends(process_auth)]
@@ -75,7 +94,7 @@ async def login(username: str, password: str, session: SessionDep, response: Res
     )
     session.add(login)
     response.set_cookie(
-        key="__login", value=login.cookie, httponly=True, secure=True, samesite="strict"
+        key="__user_cookie", value=login.cookie, httponly=True, secure=True, samesite="strict"
     )
     return {
         "success": True,
@@ -94,6 +113,6 @@ async def logout(
 
 
 @app.get("/username")
-async def username(session: SessionDep, user: UserDep) -> Optional[str]:
+async def username(session: SessionDep, user: Auth) -> Optional[str]:
     if user:
         return user.name

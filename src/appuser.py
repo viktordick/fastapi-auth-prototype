@@ -1,7 +1,6 @@
-import hashlib
-import os
 from typing import List, Optional
 
+from perfact.generic import secret_check, secret_encrypt
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import BigInteger
@@ -25,20 +24,10 @@ class AppUser(Base):
     @staticmethod
     def encrypt_pw(newpassword):
         # Generate a 16‑byte random salt
-        salt = os.urandom(16)
-        iterations = 100_000
-        hash_bytes = hashlib.pbkdf2_hmac(
-            "sha256", newpassword.encode(), salt, iterations
-        )
-        return f"{salt.hex()}|{iterations}|{hash_bytes.hex()}"
+        return secret_encrypt(newpassword, salt=True)
 
     def verify_pw(self, password):
-        parts = self.password.split("|")
-        salt = bytes.fromhex(parts[0])
-        iterations = int(parts[1])
-        stored_hash = bytes.fromhex(parts[2])
-        hash_bytes = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
-        return stored_hash == hash_bytes
+        return secret_check(encrypted=self.password, secret=password)
 
 
 class AppUserLogin(Base):
