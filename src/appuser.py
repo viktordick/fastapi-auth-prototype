@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from perfact.generic import secret_check, secret_encrypt
+import argon2
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import BigInteger
@@ -23,11 +23,13 @@ class AppUser(Base):
 
     @staticmethod
     def encrypt_pw(newpassword):
-        # Generate a 16‑byte random salt
-        return secret_encrypt(newpassword, salt=True)
+        return argon2.PasswordHasher().hash(password=newpassword)
 
     def verify_pw(self, password):
-        return secret_check(encrypted=self.password, secret=password)
+        return argon2.PasswordHasher().verify(
+            hash=self.password,
+            password=password,
+        )
 
 
 class AppUserLogin(Base):

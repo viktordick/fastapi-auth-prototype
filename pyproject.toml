@@ -16,6 +16,7 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 dependencies = [
+    "argon2-cffi",
     "fastapi[standard]",
     "psycopg[c]",
     "sqlalchemy",
