@@ -1,25 +1,13 @@
-from typing import List, Optional
+from typing import Optional
 
 import argon2
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.types import BigInteger
+from sqlmodel import Field, Relationship, SQLModel
 
 
-class Base(DeclarativeBase):
-    pass
-
-
-class AppUser(Base):
-    __tablename__ = "appuser"
-    id: Mapped[int] = mapped_column("appuser_id", BigInteger, primary_key=True)
-    name: Mapped[str] = mapped_column("appuser_name")
-    password: Mapped[Optional[str]] = mapped_column("appuser_password")
-
-    logins: Mapped[List["AppUserLogin"]] = relationship(back_populates="user")
-
-    def __repr__(self) -> str:
-        return self.name
+class AppUser(SQLModel, table=True):
+    appuser_id: Optional[int] = Field(default=None, primary_key=True)
+    appuser_name: str
+    appuser_password: Optional[str]
 
     @staticmethod
     def encrypt_pw(newpassword):
@@ -27,21 +15,15 @@ class AppUser(Base):
 
     def verify_pw(self, password):
         return argon2.PasswordHasher().verify(
-            hash=self.password,
+            hash=self.appuser_password,
             password=password,
         )
 
 
-class AppUserLogin(Base):
-    __tablename__ = "appuserlogin"
-    id: Mapped[int] = mapped_column("appuserlogin_id", BigInteger, primary_key=True)
-    appuser_id: Mapped[int] = mapped_column(
-        "appuserlogin_appuser_id", BigInteger, ForeignKey("appuser.appuser_id")
-    )
-    cookie: Mapped[str] = mapped_column("appuserlogin_cookie")
-    nextcookie: Mapped[Optional[str]] = mapped_column("appuserlogin_nextcookie")
-    done: Mapped[bool] = mapped_column("appuserlogin_done", default=False)
-    user: Mapped["AppUser"] = relationship(back_populates="logins")
-
-    def __repr__(self) -> str:
-        return f"{self.user.name} ({self.id})"
+class AppUserLogin(SQLModel, table=True):
+    appuserlogin_id: Optional[int] = Field(default=None, primary_key=True)
+    appuserlogin_appuser_id: int = Field(foreign_key="appuser.appuser_id")
+    appuserlogin_cookie: str
+    appuserlogin_nextcookie: Optional[str]
+    appuserlogin_done: bool = Field(default=False)
+    user: "AppUser" = Relationship()

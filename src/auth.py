@@ -3,15 +3,14 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, Response
 from fastapi.security import APIKeyCookie
-from sqlalchemy import create_engine, func, not_, or_, select, update
-from sqlalchemy.orm import Session
+from sqlmodel import Session, SQLModel, create_engine, func, not_, or_, select, update
 
-from .appuser import AppUser, AppUserLogin, Base
+from .appuser import AppUser, AppUserLogin
 
 COOKIE = "__user_cookie"
 app = FastAPI()
 engine = create_engine("postgresql+psycopg://zope@/perfactema")
-Base.metadata.create_all(engine)
+SQLModel.metadata.create_all(engine)
 
 
 def get_session():
@@ -42,17 +41,20 @@ def process_auth(
     this cookie is to be set).
     """
     stmt = select(AppUserLogin).where(
-        or_(AppUserLogin.cookie == cookie, AppUserLogin.nextcookie == cookie),
-        not_(AppUserLogin.done),
+        or_(
+            AppUserLogin.appuserlogin_cookie == cookie,
+            AppUserLogin.appuserlogin_nextcookie == cookie,
+        ),
+        not_(AppUserLogin.appuserlogin_done),
     )
     login: Optional[AppUserLogin] = session.scalars(stmt).one_or_none()
     if not login:
         return
-    send_cookie = login.nextcookie or login.cookie
+    send_cookie = login.appuserlogin_nextcookie or login.appuserlogin_cookie
     user = login.user
-    if cookie == login.nextcookie:
-        login.cookie = login.nextcookie
-        login.nextcookie = None
+    if cookie == login.appuserlogin_nextcookie:
+        login.appuserlogin_cookie = login.appuserlogin_nextcookie
+        login.appuserlogin_nextcookie = None
         # We commit here, so the authentication phase and the payload phase are
         # done in separate transactions.
         session.commit()
@@ -77,8 +79,8 @@ async def generate_user(username: str, password: str, session: SessionDep):
     permissions
     """
     user: AppUser = AppUser(
-        name=username,
-        password=AppUser.encrypt_pw(password),
+        appuser_name=username,
+        appuser_password=AppUser.encrypt_pw(password),
     )
     session.add(user)
     return {"success": True}
@@ -92,25 +94,25 @@ async def rotate_cookies(session: SessionDep):
     """
     session.execute(
         update(AppUserLogin)
-        .where(not_(AppUserLogin.done))
-        .values(nextcookie=func.uuidv4())
+        .where(not_(AppUserLogin.appuserlogin_done))
+        .values(appuserlogin_nextcookie=func.uuidv4())
     )
 
 
 @app.post("/login")
 async def login(username: str, password: str, session: SessionDep, response: Response):
-    stmt = select(AppUser).where(AppUser.name == username)
-    user: AppUser = session.scalars(stmt).one_or_none()
+    stmt = select(AppUser).where(AppUser.appuser_name == username)
+    user: AppUser = session.exec(stmt).one_or_none()
     if not user or not user.verify_pw(password):
         return {"success": False}
     login = AppUserLogin(
-        appuser_id=user.id,
-        cookie=uuid.uuid4(),
+        appuserlogin_appuser_id=user.appuser_id,
+        appuserlogin_cookie=uuid.uuid4(),
     )
     session.add(login)
     response.set_cookie(
         key=COOKIE,
-        value=login.cookie,
+        value=login.appuserlogin_cookie,
         httponly=True,
         secure=True,
         samesite="strict",
@@ -124,14 +126,14 @@ async def login(username: str, password: str, session: SessionDep, response: Res
 async def logout(
     session: SessionDep, cookie: LoginCookieDep, response: Response
 ) -> None:
-    stmt = select(AppUserLogin).where(AppUserLogin.cookie == cookie)
+    stmt = select(AppUserLogin).where(AppUserLogin.appuserlogin_cookie == cookie)
     login: AppUserLogin = session.scalars(stmt).one_or_none()
     if login:
-        login.done = True
+        login.appuserlogin_done = True
     response.delete_cookie(COOKIE)
 
 
 @app.get("/username")
 async def username(session: SessionDep, user: Auth) -> Optional[str]:
     if user:
-        return user.name
+        return user.appuser_name
