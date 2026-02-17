@@ -21,6 +21,7 @@ dependencies = [
     "psycopg[c]",
     "sqlmodel",
     "sqlalchemy",
+    "perfact-dbschematools",
 ]
 dynamic = ["version"]
 requires-python = ">=3.10"

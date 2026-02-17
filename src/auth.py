@@ -1,16 +1,19 @@
+import os
 import uuid
 from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, Response
 from fastapi.security import APIKeyCookie
-from sqlmodel import Session, SQLModel, create_engine, func, not_, or_, select, update
+from perfact.dbschematools import patch
+from sqlmodel import Session, create_engine, func, not_, or_, select, update
 
 from .appuser import AppUser, AppUserLogin
 
 COOKIE = "__user_cookie"
+
 app = FastAPI()
 engine = create_engine("postgresql+psycopg://zope@/perfactema")
-SQLModel.metadata.create_all(engine)
+patch(f"{os.path.dirname(__file__)}/schema")
 
 
 def get_session():
