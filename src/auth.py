@@ -6,6 +6,9 @@ from fastapi import Depends, HTTPException, Response
 from fastapi.security import APIKeyCookie
 from pydantic import BaseModel
 from sqlmodel import not_, or_, select
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp
 
 from .dbsession import DBSession
 from .model import AppGroup, AppPerm, AppPermXGroup, AppUserLogin, AppUserXPerm
@@ -136,3 +139,25 @@ def require_roles(*scopes: tuple[str]) -> Callable[[_F], _F]:
         return wrapper  # type: ignore
 
     return decorator
+
+
+class SameSitePostMiddleware(BaseHTTPMiddleware):
+    """
+    Rejects all POST or PUT requests that do not include a valid Sec-Fetch-Site header.
+    Allowed values: "same-origin"
+    """
+
+    def __init__(self, app: ASGIApp):
+        super().__init__(app)
+
+    async def dispatch(self, request, call_next):
+        if request.method in ("POST", "PUT"):
+            sec_fetch_site = request.headers.get("sec-fetch-site")
+
+            if sec_fetch_site != "same-origin":
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": f"Unauthorized: cross-site {request.method}"},
+                )
+
+        return await call_next(request)

@@ -2,13 +2,15 @@ import uuid
 
 from fastapi import FastAPI, Response
 from sqlmodel import func, not_, select, update
+from starlette.responses import JSONResponse
 
-from .auth import COOKIE, Auth, User, require_roles
+from .auth import COOKIE, Auth, SameSitePostMiddleware, User, require_roles
 from .dbsession import DBSession, DBSessionMiddleware
 from .model import AppUser, AppUserLogin
 
 app = FastAPI()
 app.add_middleware(DBSessionMiddleware)
+app.add_middleware(SameSitePostMiddleware)
 
 
 @app.put("/admin/generate_user")
@@ -18,10 +20,7 @@ async def generate_user(username: str, password: str, session: DBSession):
     We would not actually allow this, at least not without first checking elevated
     permissions
     """
-    user: AppUser = AppUser(
-        appuser_name=username,
-        appuser_password=AppUser.encrypt_pw(password),
-    )
+    user: AppUser = AppUser(username, password)
     session.add(user)
     return {"success": True}
 
@@ -43,8 +42,17 @@ async def rotate_cookies(session: DBSession):
 async def login(username: str, password: str, session: DBSession, response: Response):
     stmt = select(AppUser).where(AppUser.appuser_name == username)
     user: AppUser = session.exec(stmt).one_or_none()
-    if not user or not user.verify_pw(password):
-        return {"success": False}
+    auth_ok = True
+    if not user:
+        # Prevent timing attacks
+        AppUser.verify_dummy(password)
+        auth_ok = False
+    auth_ok = auth_ok and user.verify_pw(password)
+    if not auth_ok:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Unauthorized"},
+        )
     login = AppUserLogin(
         appuserlogin_appuser_id=user.appuser_id,
         appuserlogin_cookie=uuid.uuid4(),
