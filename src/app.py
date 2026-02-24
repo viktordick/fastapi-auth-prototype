@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 
 from fastapi import FastAPI, Response
-from sqlmodel import func, not_, select, update
+from sqlmodel import func, not_, update
 from starlette.responses import JSONResponse
 
 from .auth import COOKIE, Auth, SameSitePostMiddleware, User, require_roles
@@ -62,17 +62,6 @@ async def login(username: str, password: str, session: DBSession, response: Resp
     return {
         "success": True,
     }
-
-
-@app.post("/logout")
-async def logout(session: DBSession, auth: Auth, response: Response) -> None:
-    stmt = select(AppUserLogin).where(
-        AppUserLogin.appuserlogin_id == auth.appuserlogin_id
-    )
-    login: AppUserLogin = session.scalars(stmt).one_or_none()
-    if login:
-        login.appuserlogin_done = True
-    response.delete_cookie(COOKIE)
 
 
 @app.get("/me")

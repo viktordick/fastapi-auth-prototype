@@ -1,12 +1,15 @@
+import os
 from typing import Optional, Self
 
 import argon2
 from sqlmodel import Field, Relationship, Session, SQLModel, func, select
 
-DUMMY_HASH = argon2.PasswordHasher().hash(password="dummy")
+DUMMY_HASH = argon2.PasswordHasher().hash(os.urandom(16).hex())
 
 
-def verify_hash(hash: str, password: str, hasher: argon2.PasswordHasher = None) -> bool:
+def verify_hash(
+    hash: str, password: str, hasher: Optional[argon2.PasswordHasher] = None
+) -> bool:
     if hasher is None:
         hasher = argon2.PasswordHasher()
     try:
@@ -26,9 +29,7 @@ class AppUser(SQLModel, table=True):
         self.appuser_password = self.encrypt_pw(password)
 
     @classmethod
-    def find(
-        cls: Self, session: Session, username: str, password: str
-    ) -> Optional[Self]:
+    def find(cls, session: Session, username: str, password: str) -> Optional[Self]:
         """
         Find the user with the given username and check its password. If there
         is a match, return the user.
@@ -36,13 +37,14 @@ class AppUser(SQLModel, table=True):
         stmt = select(cls).where(
             func.lower(AppUser.appuser_name) == func.lower(username)
         )
-        user: cls = session.exec(stmt).one_or_none()
-        if not user:
+        user: Optional[Self] = session.exec(stmt).one_or_none()
+        if not user or user.appuser_password is None:
             # Prevent timing attacks
             verify_hash(DUMMY_HASH, password)
-            return
+            return None
         if verify_hash(user.appuser_password, password):
             return user
+        return None
 
     @staticmethod
     def encrypt_pw(newpassword):
@@ -68,7 +70,11 @@ class AppUserKey(SQLModel, table=True):
         ident, key = auth.split("-", 1)
         candidates = session.exec(
             select(AppUserKey, AppUser)
-            .where(AppUserKey.appuserkey_key.op("~")(ident + "-.*"))
+            .where(
+                func.regexp_match(AppUserKey.appuserkey_key, (ident + "-.*")).isnot(
+                    None
+                )
+            )
             .where(AppUserKey.appuserkey_appuser_id == AppUser.appuser_id)
         )
         hasher = argon2.PasswordHasher()
@@ -79,6 +85,7 @@ class AppUserKey(SQLModel, table=True):
             _, encrypted = appuserkey.appuserkey_key.split("-", 1)
             if verify_hash(hash=encrypted, password=key, hasher=hasher):
                 return appuser
+        return None
 
 
 class AppUserLogin(SQLModel, table=True):

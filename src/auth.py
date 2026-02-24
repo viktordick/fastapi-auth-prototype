@@ -83,7 +83,7 @@ def _auth_cookie(
             .where(AppUserLogin.appuserlogin_appuser_id == AppUser.appuser_id)
         ).one()
     except NoResultFound:
-        return
+        return None
 
     send_cookie = login.appuserlogin_nextcookie or login.appuserlogin_cookie
     if cookie == login.appuserlogin_nextcookie:
@@ -139,18 +139,20 @@ def _process_auth(
 Auth = Annotated[Optional[User], Depends(_process_auth)]
 
 
-_F = TypeVar("F", bound=Callable[..., object])
+_F = TypeVar("_F", bound=Callable[..., object])
 
 
-def require_roles(*scopes: tuple[str]) -> Callable[[_F], _F]:
+def require_roles(*scopes: str) -> Callable[[_F], _F]:
     """
     Decorator to check for given roles
     """
 
-    def require_scopes(required_scopes: list[str]):
+    def require_scopes(required_scopes: tuple[str, ...]):
+
         def checker(user: Auth):
             # Check if all required scopes are present
-            missing = set(required_scopes) - set(user.roles)
+            roles = set() if user is None else user.roles
+            missing = set(required_scopes) - set(roles)
             if missing:
                 raise HTTPException(
                     status_code=403,
@@ -184,7 +186,7 @@ def require_roles(*scopes: tuple[str]) -> Callable[[_F], _F]:
             return await func(*args, **kwargs)
 
         # attach the new signature so FastAPI sees the dependency
-        wrapper.__signature__ = new_sig  # critical
+        wrapper.__signature__ = new_sig  # type: ignore
         return wrapper  # type: ignore
 
     return decorator

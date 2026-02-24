@@ -2,14 +2,12 @@ import os
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
-from perfact.dbschematools import patch
 from sqlmodel import Session, create_engine
 from starlette.middleware.base import BaseHTTPMiddleware
 
 engine = create_engine(
     "postgresql+psycopg://zope@/perfactema", echo=os.environ.get("SQL_DEBUG_ECHO")
 )
-patch(f"{os.path.dirname(__file__)}/schema")
 
 
 class DBSessionMiddleware(BaseHTTPMiddleware):
