@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from fastapi import FastAPI, Response
 from sqlmodel import func, not_, select, update
@@ -40,15 +41,8 @@ async def rotate_cookies(session: DBSession):
 
 @app.post("/login")
 async def login(username: str, password: str, session: DBSession, response: Response):
-    stmt = select(AppUser).where(AppUser.appuser_name == username)
-    user: AppUser = session.exec(stmt).one_or_none()
-    auth_ok = True
-    if not user:
-        # Prevent timing attacks
-        AppUser.verify_dummy(password)
-        auth_ok = False
-    auth_ok = auth_ok and user.verify_pw(password)
-    if not auth_ok:
+    user: Optional[AppUser] = AppUser.find(session, username, password)
+    if user is None:
         return JSONResponse(
             status_code=401,
             content={"detail": "Unauthorized"},
@@ -82,5 +76,5 @@ async def logout(session: DBSession, auth: Auth, response: Response) -> None:
 
 
 @app.get("/me")
-async def me(session: DBSession, user: Auth) -> User:
+async def me(session: DBSession, user: Auth) -> Optional[User]:
     return user
