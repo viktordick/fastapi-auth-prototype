@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Self
+from typing import List, Optional, Self
 
 import argon2
 from sqlmodel import Field, Relationship, Session, SQLModel, func, select
@@ -124,3 +124,15 @@ class AppPermXGroup(SQLModel, table=True):
     appperm_id: int = Col("apppermxgroup_appperm_id", foreign_key="appperm.appperm_id")
     perm: "AppPerm" = Relationship()
     group: "AppGroup" = Relationship()
+
+
+class AppStc(SQLModel, table=True):
+    id: Optional[int] = Col("appstc_id", default=None, primary_key=True)
+    name: str = Col("appstc_name")
+    parent_appstc_id: Optional[int] = Col(
+        "appstc_parent_appstc_id", foreign_key="appstc.appstc_id"
+    )
+    parent: Optional["AppStc"] = Relationship(
+        back_populates="children", sa_relationship_kwargs={"remote_side": "AppStc.id"}
+    )
+    children: List["AppStc"] = Relationship(back_populates="parent")
