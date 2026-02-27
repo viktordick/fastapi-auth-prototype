@@ -34,8 +34,8 @@ async def rotate_cookies(session: DBSession):
     """
     session.execute(
         update(AppUserLogin)
-        .where(not_(AppUserLogin.appuserlogin_done))
-        .values(appuserlogin_nextcookie=func.uuidv4())
+        .where(not_(AppUserLogin.done))
+        .values(nextcookie=func.uuidv4())
     )
 
 
@@ -48,13 +48,13 @@ async def login(username: str, password: str, session: DBSession, response: Resp
             content={"detail": "Unauthorized"},
         )
     login = AppUserLogin(
-        appuserlogin_appuser_id=user.appuser_id,
-        appuserlogin_cookie=uuid.uuid4(),
+        appuser_id=user.id,
+        cookie=uuid.uuid4(),
     )
     session.add(login)
     response.set_cookie(
         key=COOKIE,
-        value=login.appuserlogin_cookie,
+        value=login.cookie,
         httponly=True,
         secure=True,
         samesite="strict",

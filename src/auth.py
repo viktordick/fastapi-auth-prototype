@@ -75,20 +75,20 @@ def _auth_cookie(
             select(AppUserLogin, AppUser)
             .where(
                 or_(
-                    AppUserLogin.appuserlogin_cookie == cookie,
-                    AppUserLogin.appuserlogin_nextcookie == cookie,
+                    AppUserLogin.cookie == cookie,
+                    AppUserLogin.nextcookie == cookie,
                 ),
-                not_(AppUserLogin.appuserlogin_done),
+                not_(AppUserLogin.done),
             )
-            .where(AppUserLogin.appuserlogin_appuser_id == AppUser.appuser_id)
+            .where(AppUserLogin.appuser_id == AppUser.id)
         ).one()
     except NoResultFound:
         return None
 
-    send_cookie = login.appuserlogin_nextcookie or login.appuserlogin_cookie
-    if cookie == login.appuserlogin_nextcookie:
-        login.appuserlogin_cookie = login.appuserlogin_nextcookie
-        login.appuserlogin_nextcookie = None
+    send_cookie = login.nextcookie or login.cookie
+    if cookie == login.nextcookie:
+        login.cookie = login.nextcookie
+        login.nextcookie = None
 
     response.set_cookie(
         key=COOKIE,
@@ -118,15 +118,15 @@ def _process_auth(
 
     if appuser:
         user = User(
-            name=appuser.appuser_name,
+            name=appuser.name,
             roles=[
-                role.appgroup_zoperole
+                role.zoperole
                 for role in session.exec(
                     select(AppGroup)
                     .join(AppPermXGroup)
                     .join(AppPerm)
                     .join(AppUserXPerm)
-                    .where(AppUserXPerm.appuserxperm_appuser_id == appuser.appuser_id)
+                    .where(AppUserXPerm.appuser_id == appuser.id)
                 )
             ],
         )

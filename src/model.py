@@ -19,14 +19,21 @@ def verify_hash(
         return False
 
 
+def Col(colname, **kw):
+    """
+    Wrapper for field type with aliased column name on the DB
+    """
+    return Field(**kw, sa_column_kwargs={"name": colname})
+
+
 class AppUser(SQLModel, table=True):
-    appuser_id: Optional[int] = Field(default=None, primary_key=True)
-    appuser_name: str
-    appuser_password: Optional[str]
+    id: Optional[int] = Col("appuser_id", default=None, primary_key=True)
+    name: str = Col("appuser_name")
+    password: Optional[str] = Col("appuser_password")
 
     def __init__(self, name: str, password: str):
-        self.appuser_name = name
-        self.appuser_password = self.encrypt_pw(password)
+        self.name = name
+        self.password = self.encrypt_pw(password)
 
     @classmethod
     def find(cls, session: Session, username: str, password: str) -> Optional[Self]:
@@ -34,15 +41,13 @@ class AppUser(SQLModel, table=True):
         Find the user with the given username and check its password. If there
         is a match, return the user.
         """
-        stmt = select(cls).where(
-            func.lower(AppUser.appuser_name) == func.lower(username)
-        )
+        stmt = select(cls).where(func.lower(AppUser.name) == func.lower(username))
         user: Optional[Self] = session.exec(stmt).one_or_none()
-        if not user or user.appuser_password is None:
+        if not user or user.password is None:
             # Prevent timing attacks
             verify_hash(DUMMY_HASH, password)
             return None
-        if verify_hash(user.appuser_password, password):
+        if verify_hash(user.password, password):
             return user
         return None
 
@@ -52,9 +57,9 @@ class AppUser(SQLModel, table=True):
 
 
 class AppUserKey(SQLModel, table=True):
-    appuserkey_id: Optional[int] = Field(default=None, primary_key=True)
-    appuserkey_appuser_id: int = Field(foreign_key="appuser.appuser_id")
-    appuserkey_key: str
+    id: Optional[int] = Col("appuserkey_id", default=None, primary_key=True)
+    appuser_id: int = Col("appuserkey_appuser_id", foreign_key="appuser.appuser_id")
+    key: str = Col("appuserkey_key")
 
     @staticmethod
     def find(session: Session, auth: str) -> Optional[AppUser]:
@@ -70,54 +75,52 @@ class AppUserKey(SQLModel, table=True):
         ident, key = auth.split("-", 1)
         candidates = session.exec(
             select(AppUserKey, AppUser)
-            .where(
-                func.regexp_match(AppUserKey.appuserkey_key, (ident + "-.*")).isnot(
-                    None
-                )
-            )
-            .where(AppUserKey.appuserkey_appuser_id == AppUser.appuser_id)
+            .where(func.regexp_match(AppUserKey.key, (ident + "-.*")).isnot(None))
+            .where(AppUserKey.appuser_id == AppUser.id)
         )
         hasher = argon2.PasswordHasher()
         if not candidates:
             verify_hash(hash=DUMMY_HASH, password=key, hasher=hasher)
             return None
         for appuserkey, appuser in candidates:
-            _, encrypted = appuserkey.appuserkey_key.split("-", 1)
+            _, encrypted = appuserkey.key.split("-", 1)
             if verify_hash(hash=encrypted, password=key, hasher=hasher):
                 return appuser
         return None
 
 
 class AppUserLogin(SQLModel, table=True):
-    appuserlogin_id: Optional[int] = Field(default=None, primary_key=True)
-    appuserlogin_appuser_id: int = Field(foreign_key="appuser.appuser_id")
-    appuserlogin_cookie: str
-    appuserlogin_nextcookie: Optional[str]
-    appuserlogin_done: bool = Field(default=False)
+    id: Optional[int] = Col("appuserlogin_id", default=None, primary_key=True)
+    appuser_id: int = Col("appuserlogin_appuser_id", foreign_key="appuser.appuser_id")
+    cookie: str = Col("appuserlogin_cookie")
+    nextcookie: Optional[str] = Col("appuserlogin_nextcookie")
+    done: bool = Col("appuserlogin_done", default=False)
     user: "AppUser" = Relationship()
 
 
 class AppGroup(SQLModel, table=True):
-    appgroup_id: Optional[int] = Field(default=None, primary_key=True)
-    appgroup_zoperole: str
+    id: Optional[int] = Col("appgroup_id", default=None, primary_key=True)
+    zoperole: str = Col("appgroup_zoperole")
 
 
 class AppPerm(SQLModel, table=True):
-    appperm_id: Optional[int] = Field(default=None, primary_key=True)
-    appperm_name: str
+    id: Optional[int] = Col("appperm_id", default=None, primary_key=True)
+    name: str = Col("appperm_name")
 
 
 class AppUserXPerm(SQLModel, table=True):
-    appuserxperm_id: Optional[int] = Field(default=None, primary_key=True)
-    appuserxperm_appuser_id: int = Field(foreign_key="appuser.appuser_id")
-    appuserxperm_appperm_id: int = Field(foreign_key="appperm.appperm_id")
+    id: Optional[int] = Col("appuserxperm_id", default=None, primary_key=True)
+    appuser_id: int = Col("appuserxperm_appuser_id", foreign_key="appuser.appuser_id")
+    appperm_id: int = Col("appuserxperm_appperm_id", foreign_key="appperm.appperm_id")
     user: "AppUser" = Relationship()
     perm: "AppPerm" = Relationship()
 
 
 class AppPermXGroup(SQLModel, table=True):
-    apppermxgroup_id: Optional[int] = Field(default=None, primary_key=True)
-    apppermxgroup_appgroup_id: int = Field(foreign_key="appgroup.appgroup_id")
-    apppermxgroup_appperm_id: int = Field(foreign_key="appperm.appperm_id")
+    id: Optional[int] = Col("apppermxgroup_id", default=None, primary_key=True)
+    appgroup_id: int = Col(
+        "apppermxgroup_appgroup_id", foreign_key="appgroup.appgroup_id"
+    )
+    appperm_id: int = Col("apppermxgroup_appperm_id", foreign_key="appperm.appperm_id")
     perm: "AppPerm" = Relationship()
     group: "AppGroup" = Relationship()
