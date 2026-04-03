@@ -2,7 +2,8 @@ import os
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
-from sqlalchemy import Connection, create_engine
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 
 engine = create_engine(
@@ -20,7 +21,7 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = Response("Internal server error", status_code=500)
         try:
-            request.state.db = engine.connect()
+            request.state.db = Session(engine)
             response = await call_next(request)
             request.state.db.commit()
         except Exception:
@@ -35,4 +36,4 @@ def _get_session(request: Request):
     return request.state.db
 
 
-DBSession = Annotated[Connection, Depends(_get_session)]
+DBSession = Annotated[Session, Depends(_get_session)]

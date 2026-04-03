@@ -22,7 +22,7 @@ async def generate_user(username: str, password: str, session: DBSession):
     permissions
     """
     user: AppUser = AppUser(username, password)
-    session.add(user)
+    session.add_all([user])
     return {"success": True}
 
 
@@ -51,7 +51,7 @@ async def login(username: str, password: str, session: DBSession, response: Resp
         appuser_id=user.id,
         cookie=uuid.uuid4(),
     )
-    session.add(login)
+    session.add_all([login])
     response.set_cookie(
         key=COOKIE,
         value=login.cookie,

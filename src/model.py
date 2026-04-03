@@ -2,13 +2,15 @@ import os
 from typing import Optional, Self
 
 import argon2
-from sqlalchemy import Connection, ForeignKey, func, select
+from sqlalchemy import ForeignKey, func, select
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     relationship,
 )
 from sqlalchemy.orm import mapped_column as col
+
+from .dbsession import DBSession
 
 DUMMY_HASH = argon2.PasswordHasher().hash(os.urandom(16).hex())
 
@@ -40,13 +42,15 @@ class AppUser(Base):
         self.password = self.encrypt_pw(password)
 
     @classmethod
-    def find(cls, conn: Connection, username: str, password: str) -> Optional[Self]:
+    def find(cls, session: DBSession, username: str, password: str) -> Optional[Self]:
         """
         Find the user with the given username and check its password. If there
         is a match, return the user.
         """
         stmt = select(cls).where(func.lower(AppUser.name) == func.lower(username))
-        user: Optional[Self] = conn.exec(stmt).one_or_none()
+        user: Optional[Self] = None
+        for user in session.execute(stmt).scalars():
+            pass
         if not user or user.password is None:
             # Prevent timing attacks
             verify_hash(DUMMY_HASH, password)
@@ -70,7 +74,7 @@ class AppUserKey(Base):
     appuser: Mapped[AppUser] = relationship()
 
     @staticmethod
-    def find(conn: Connection, auth: str) -> Optional[AppUser]:
+    def find(session: DBSession, auth: str) -> Optional[AppUser]:
         """
         Split the auth header into ident and key.
         Find a key that, when split on the first "-", starts with the ident and
@@ -81,7 +85,7 @@ class AppUserKey(Base):
         roughly the same time as for one match.
         """
         ident, key = auth.split("-", 1)
-        candidates = conn.exec(
+        candidates = session.execute(
             select(AppUserKey, AppUser)
             .where(func.regexp_match(AppUserKey.key, (ident + "-.*")).isnot(None))
             .where(AppUserKey.appuser_id == AppUser.id)
@@ -101,7 +105,7 @@ class AppUserLogin(Base):
     __tablename__ = "appuserlogin"
     id: Mapped[int] = col("appuserlogin_id", primary_key=True)
     appuser_id: Mapped[int] = col(
-        "appuserlogin_appuser_id", foreign_key="appuser.appuser_id"
+        "appuserlogin_appuser_id", ForeignKey("appuser.appuser_id")
     )
     cookie: Mapped[str] = col("appuserlogin_cookie")
     nextcookie: Mapped[Optional[str]] = col("appuserlogin_nextcookie")

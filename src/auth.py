@@ -71,7 +71,7 @@ def _auth_cookie(
     this cookie is to be set).
     """
     try:
-        login, user = session.exec(
+        login, user = session.execute(
             select(AppUserLogin, AppUser)
             .where(
                 or_(
@@ -116,20 +116,21 @@ def _process_auth(
     elif cookie is not None:
         appuser = _auth_cookie(session, cookie, response)
 
-    if appuser:
-        user = User(
-            name=appuser.name,
-            roles=[
-                role.zoperole
-                for role in session.exec(
-                    select(AppGroup)
-                    .join(AppPermXGroup)
-                    .join(AppPerm)
-                    .join(AppUserXPerm)
-                    .where(AppUserXPerm.appuser_id == appuser.id)
-                )
-            ],
-        )
+    if not appuser:
+        return None
+    user = User(
+        name=appuser.name,
+        roles=[
+            role.zoperole
+            for role in session.execute(
+                select(AppGroup)
+                .join(AppPermXGroup)
+                .join(AppPerm)
+                .join(AppUserXPerm)
+                .where(AppUserXPerm.appuser_id == appuser.id)
+            )
+        ],
+    )
     # We commit here, so the authentication phase and the payload phase are
     # done in separate transactions.
     session.commit()
