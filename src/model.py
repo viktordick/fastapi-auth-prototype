@@ -1,4 +1,5 @@
 import os
+import uuid
 from typing import Optional, Self
 
 import argon2
@@ -111,6 +112,27 @@ class AppUserLogin(Base):
     nextcookie: Mapped[Optional[str]] = col("appuserlogin_nextcookie")
     done: Mapped[bool] = col("appuserlogin_done", default=False)
     user: Mapped[AppUser] = relationship()
+
+    @classmethod
+    def login(cls, session: DBSession, username: str, password: str) -> Optional[Self]:
+        """
+        Find the user with the given username and check its password. If there
+        is a match, create a login and return it.
+        """
+        stmt = select(AppUser).where(func.lower(AppUser.name) == func.lower(username))
+        user: Optional[AppUser] = None
+        for user in session.execute(stmt).scalars():
+            pass
+        if not user or user.password is None:
+            # Prevent timing attacks
+            verify_hash(DUMMY_HASH, password)
+            return None
+        if not verify_hash(user.password, password):
+            return None
+
+        login = cls(appuser_id=user.id, cookie=uuid.uuid4())
+        session.add_all([login])
+        return login
 
 
 class AppGroup(Base):

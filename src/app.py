@@ -1,11 +1,9 @@
-import uuid
 from typing import Optional
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, status
 from sqlalchemy import func, not_, update
-from starlette.responses import JSONResponse
 
-from .auth import COOKIE, Auth, SameSitePostMiddleware, User, require_roles
+from .auth import COOKIE, SameSitePostMiddleware, require_roles
 from .dbsession import DBSession, DBSessionMiddleware
 from .model import AppUser, AppUserLogin
 
@@ -18,15 +16,14 @@ app.add_middleware(SameSitePostMiddleware)
 @require_roles("Admin")
 async def generate_user(username: str, password: str, session: DBSession):
     """
-    We would not actually allow this, at least not without first checking elevated
-    permissions
+    Create a new user with the given username and password
     """
     user: AppUser = AppUser(username, password)
     session.add_all([user])
-    return {"success": True}
 
 
 @app.post("/admin/rotate_cookies")
+@require_roles("Admin")
 async def rotate_cookies(session: DBSession):
     """
     Something that would usually rather be done periodically and can not be triggered
@@ -40,18 +37,13 @@ async def rotate_cookies(session: DBSession):
 
 
 @app.post("/login")
-async def login(username: str, password: str, session: DBSession, response: Response):
-    user: Optional[AppUser] = AppUser.find(session, username, password)
-    if user is None:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Unauthorized"},
-        )
-    login = AppUserLogin(
-        appuser_id=user.id,
-        cookie=uuid.uuid4(),
-    )
-    session.add_all([login])
+async def login(
+    username: str, password: str, session: DBSession, response: Response
+) -> bool:
+    login: Optional[AppUserLogin] = AppUserLogin.login(session, username, password)
+    if login is None:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return False
     response.set_cookie(
         key=COOKIE,
         value=login.cookie,
@@ -59,11 +51,4 @@ async def login(username: str, password: str, session: DBSession, response: Resp
         secure=True,
         samesite="strict",
     )
-    return {
-        "success": True,
-    }
-
-
-@app.get("/me")
-async def me(session: DBSession, user: Auth) -> Optional[User]:
-    return user
+    return True
