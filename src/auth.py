@@ -5,8 +5,8 @@ from typing import Annotated, Callable, Optional, TypeVar
 from fastapi import Depends, HTTPException, Response, status
 from fastapi.security import APIKeyCookie, APIKeyHeader
 from pydantic import BaseModel
+from sqlalchemy import not_, or_, select
 from sqlalchemy.exc import NoResultFound
-from sqlmodel import not_, or_, select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp

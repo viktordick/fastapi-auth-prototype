@@ -19,7 +19,6 @@ dependencies = [
     "argon2-cffi",
     "fastapi[standard]",
     "psycopg[c]",
-    "sqlmodel",
     "sqlalchemy",
 ]
 dynamic = ["version"]

@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 
 from fastapi import FastAPI, Response
-from sqlmodel import func, not_, update
+from sqlalchemy import func, not_, update
 from starlette.responses import JSONResponse
 
 from .auth import COOKIE, Auth, SameSitePostMiddleware, User, require_roles

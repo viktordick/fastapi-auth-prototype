@@ -1,11 +1,11 @@
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
+from sqlalchemy import create_engine
 
-from ..model import AppStc
+from ..model import Base
 
 
 @pytest.fixture
-def session(postgresql):
+def conn(postgresql):
     # postgresql is a dict-like object with connection info
     url = (
         f"postgresql+psycopg://{postgresql.info.user}:"
@@ -18,9 +18,7 @@ def session(postgresql):
     engine = create_engine(url, echo=True)
 
     # Create tables for each test
-    SQLModel.metadata.create_all(engine)
+    Base.metadata.create_all(engine)
 
-    session = Session(engine)
-    root = AppStc(name="root")
-    session.add(root)
-    return session
+    with engine.connect() as conn:
+        yield conn

@@ -1,8 +1,14 @@
 import os
-from typing import List, Optional, Self
+from typing import Optional, Self
 
 import argon2
-from sqlmodel import Field, Relationship, Session, SQLModel, func, select
+from sqlalchemy import Connection, ForeignKey, func, select
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    relationship,
+)
+from sqlalchemy.orm import mapped_column as col
 
 DUMMY_HASH = argon2.PasswordHasher().hash(os.urandom(16).hex())
 
@@ -19,30 +25,28 @@ def verify_hash(
         return False
 
 
-def Col(colname, **kw):
-    """
-    Wrapper for field type with aliased column name on the DB
-    """
-    return Field(**kw, sa_column_kwargs={"name": colname})
+class Base(DeclarativeBase):
+    pass
 
 
-class AppUser(SQLModel, table=True):
-    id: Optional[int] = Col("appuser_id", default=None, primary_key=True)
-    name: str = Col("appuser_name")
-    password: Optional[str] = Col("appuser_password")
+class AppUser(Base):
+    __tablename__ = "appuser"
+    id: Mapped[int] = col("appuser_id", primary_key=True)
+    name: Mapped[str] = col("appuser_name")
+    password: Mapped[Optional[str]] = col("appuser_password")
 
     def __init__(self, name: str, password: str):
         self.name = name
         self.password = self.encrypt_pw(password)
 
     @classmethod
-    def find(cls, session: Session, username: str, password: str) -> Optional[Self]:
+    def find(cls, conn: Connection, username: str, password: str) -> Optional[Self]:
         """
         Find the user with the given username and check its password. If there
         is a match, return the user.
         """
         stmt = select(cls).where(func.lower(AppUser.name) == func.lower(username))
-        user: Optional[Self] = session.exec(stmt).one_or_none()
+        user: Optional[Self] = conn.exec(stmt).one_or_none()
         if not user or user.password is None:
             # Prevent timing attacks
             verify_hash(DUMMY_HASH, password)
@@ -56,13 +60,17 @@ class AppUser(SQLModel, table=True):
         return argon2.PasswordHasher().hash(password=newpassword)
 
 
-class AppUserKey(SQLModel, table=True):
-    id: Optional[int] = Col("appuserkey_id", default=None, primary_key=True)
-    appuser_id: int = Col("appuserkey_appuser_id", foreign_key="appuser.appuser_id")
-    key: str = Col("appuserkey_key")
+class AppUserKey(Base):
+    __tablename__ = "appuserkey"
+    id: Mapped[int] = col("appuserkey_id", primary_key=True)
+    appuser_id: Mapped[int] = col(
+        "appuserkey_appuser_id", ForeignKey("appuser.appuser_id")
+    )
+    key: Mapped[str] = col("appuserkey_key")
+    appuser: Mapped[AppUser] = relationship()
 
     @staticmethod
-    def find(session: Session, auth: str) -> Optional[AppUser]:
+    def find(conn: Connection, auth: str) -> Optional[AppUser]:
         """
         Split the auth header into ident and key.
         Find a key that, when split on the first "-", starts with the ident and
@@ -73,7 +81,7 @@ class AppUserKey(SQLModel, table=True):
         roughly the same time as for one match.
         """
         ident, key = auth.split("-", 1)
-        candidates = session.exec(
+        candidates = conn.exec(
             select(AppUserKey, AppUser)
             .where(func.regexp_match(AppUserKey.key, (ident + "-.*")).isnot(None))
             .where(AppUserKey.appuser_id == AppUser.id)
@@ -89,50 +97,60 @@ class AppUserKey(SQLModel, table=True):
         return None
 
 
-class AppUserLogin(SQLModel, table=True):
-    id: Optional[int] = Col("appuserlogin_id", default=None, primary_key=True)
-    appuser_id: int = Col("appuserlogin_appuser_id", foreign_key="appuser.appuser_id")
-    cookie: str = Col("appuserlogin_cookie")
-    nextcookie: Optional[str] = Col("appuserlogin_nextcookie")
-    done: bool = Col("appuserlogin_done", default=False)
-    user: "AppUser" = Relationship()
-
-
-class AppGroup(SQLModel, table=True):
-    id: Optional[int] = Col("appgroup_id", default=None, primary_key=True)
-    zoperole: str = Col("appgroup_zoperole")
-
-
-class AppPerm(SQLModel, table=True):
-    id: Optional[int] = Col("appperm_id", default=None, primary_key=True)
-    name: str = Col("appperm_name")
-
-
-class AppUserXPerm(SQLModel, table=True):
-    id: Optional[int] = Col("appuserxperm_id", default=None, primary_key=True)
-    appuser_id: int = Col("appuserxperm_appuser_id", foreign_key="appuser.appuser_id")
-    appperm_id: int = Col("appuserxperm_appperm_id", foreign_key="appperm.appperm_id")
-    user: "AppUser" = Relationship()
-    perm: "AppPerm" = Relationship()
-
-
-class AppPermXGroup(SQLModel, table=True):
-    id: Optional[int] = Col("apppermxgroup_id", default=None, primary_key=True)
-    appgroup_id: int = Col(
-        "apppermxgroup_appgroup_id", foreign_key="appgroup.appgroup_id"
+class AppUserLogin(Base):
+    __tablename__ = "appuserlogin"
+    id: Mapped[int] = col("appuserlogin_id", primary_key=True)
+    appuser_id: Mapped[int] = col(
+        "appuserlogin_appuser_id", foreign_key="appuser.appuser_id"
     )
-    appperm_id: int = Col("apppermxgroup_appperm_id", foreign_key="appperm.appperm_id")
-    perm: "AppPerm" = Relationship()
-    group: "AppGroup" = Relationship()
+    cookie: Mapped[str] = col("appuserlogin_cookie")
+    nextcookie: Mapped[Optional[str]] = col("appuserlogin_nextcookie")
+    done: Mapped[bool] = col("appuserlogin_done", default=False)
+    user: Mapped[AppUser] = relationship()
 
 
-class AppStc(SQLModel, table=True):
-    id: Optional[int] = Col("appstc_id", default=None, primary_key=True)
-    name: str = Col("appstc_name")
-    parent_appstc_id: Optional[int] = Col(
-        "appstc_parent_appstc_id", foreign_key="appstc.appstc_id"
+class AppGroup(Base):
+    __tablename__ = "appgroup"
+    id: Mapped[int] = col("appgroup_id", primary_key=True)
+    zoperole: Mapped[str] = col("appgroup_zoperole")
+
+
+class AppPerm(Base):
+    __tablename__ = "appperm"
+    id: Mapped[int] = col("appperm_id", primary_key=True)
+    name: Mapped[str] = col("appperm_name")
+
+
+class AppUserXPerm(Base):
+    __tablename__ = "appuserxperm"
+    id: Mapped[int] = col("appuserxperm_id", primary_key=True)
+    appuser_id: Mapped[int] = col(
+        "appuserxperm_appuser_id", ForeignKey("appuser.appuser_id")
     )
-    parent: Optional["AppStc"] = Relationship(
-        back_populates="children", sa_relationship_kwargs={"remote_side": "AppStc.id"}
+    appperm_id: Mapped[int] = col(
+        "appuserxperm_appperm_id", ForeignKey("appperm.appperm_id")
     )
-    children: List["AppStc"] = Relationship(back_populates="parent")
+    user: Mapped[AppUser] = relationship()
+    perm: Mapped[AppPerm] = relationship()
+
+
+class AppPermXGroup(Base):
+    __tablename__ = "apppermxgroup"
+    id: Mapped[int] = col("apppermxgroup_id", primary_key=True)
+    appgroup_id: Mapped[int] = col(
+        "apppermxgroup_appgroup_id", ForeignKey("appgroup.appgroup_id")
+    )
+    appperm_id: Mapped[int] = col(
+        "apppermxgroup_appperm_id", ForeignKey("appperm.appperm_id")
+    )
+    perm: Mapped[AppPerm] = relationship()
+    group: Mapped[AppGroup] = relationship()
+
+
+class AppStc(Base):
+    __tablename__ = "appstc"
+    id: Mapped[int] = col("appstc_id", primary_key=True)
+    name: Mapped[str] = col("appstc_name")
+    parent_appstc_id: Mapped[Optional[int]] = col(
+        "appstc_parent_appstc_id", ForeignKey("appstc.appstc_id")
+    )

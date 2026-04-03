@@ -1,2 +1,2 @@
-def test_auth(session):
+def test_auth(conn):
     pass
