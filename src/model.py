@@ -3,13 +3,14 @@ import uuid
 from typing import Optional, Self
 
 import argon2
-from sqlalchemy import ForeignKey, func, select
+from sqlalchemy import BigInteger, ForeignKey, String, func, select
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     relationship,
 )
 from sqlalchemy.orm import mapped_column as col
+from sqlalchemy.types import ARRAY, Integer
 
 from .dbsession import DBSession
 
@@ -29,7 +30,16 @@ def verify_hash(
 
 
 class Base(DeclarativeBase):
-    pass
+    type_annotation_map = {str: String(), int: BigInteger()}
+
+
+class View(DeclarativeBase):
+    """
+    Separate base for view definitions, so they are not created as tables but
+    can be used like tables
+    """
+
+    type_annotation_map = {str: String(), int: BigInteger()}
 
 
 class AppUser(Base):
@@ -41,24 +51,6 @@ class AppUser(Base):
     def __init__(self, name: str, password: str):
         self.name = name
         self.password = self.encrypt_pw(password)
-
-    @classmethod
-    def find(cls, session: DBSession, username: str, password: str) -> Optional[Self]:
-        """
-        Find the user with the given username and check its password. If there
-        is a match, return the user.
-        """
-        stmt = select(cls).where(func.lower(AppUser.name) == func.lower(username))
-        user: Optional[Self] = None
-        for user in session.execute(stmt).scalars():
-            pass
-        if not user or user.password is None:
-            # Prevent timing attacks
-            verify_hash(DUMMY_HASH, password)
-            return None
-        if verify_hash(user.password, password):
-            return user
-        return None
 
     @staticmethod
     def encrypt_pw(newpassword):
@@ -180,3 +172,32 @@ class AppStc(Base):
     parent_appstc_id: Mapped[Optional[int]] = col(
         "appstc_parent_appstc_id", ForeignKey("appstc.appstc_id")
     )
+
+
+class AppStc_Paths(View):
+    __tablename__ = "appstc_paths"
+    __view__ = True
+    id: Mapped[int] = col("id", primary_key=True)
+    id_path = col("id_path", ARRAY(Integer, as_tuple=True, zero_indexes=True))
+    # This is a simplified definition, the actual one does not use a recursive
+    # view, but a cached table so it can use indices. It also has some more
+    # columns, but these are the only ones we need.
+    definition = """
+        with recursive tree as (
+          select
+            appstc_id as id,
+            array[appstc_id] as id_path,
+            1 as depth
+          from appstc
+          where appstc_parent_appstc_id is null
+          union all
+          select
+            appstc_id,
+            id_path || array[appstc_id],
+            depth + 1
+          from appstc
+          join tree
+            on id = appstc_parent_appstc_id
+        )
+        select * from tree
+    """

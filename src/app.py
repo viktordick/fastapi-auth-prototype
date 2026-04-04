@@ -1,9 +1,10 @@
 from typing import Optional
 
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy import func, not_, update
 
-from .auth import COOKIE, SameSitePostMiddleware, require_roles
+from .auth import COOKIE, Auth, SameSitePostMiddleware, require_roles
 from .dbsession import DBSession, DBSessionMiddleware
 from .model import AppUser, AppUserLogin
 
@@ -36,11 +37,25 @@ async def rotate_cookies(session: DBSession):
     )
 
 
+class Credentials(BaseModel):
+    """
+    Username and password sent to /login
+    """
+
+    username: str
+    password: str
+
+
 @app.post("/login")
 async def login(
-    username: str, password: str, session: DBSession, response: Response
+    creds: Credentials,
+    session: DBSession,
+    response: Response,
+    request: Request,
 ) -> bool:
-    login: Optional[AppUserLogin] = AppUserLogin.login(session, username, password)
+    login: Optional[AppUserLogin] = AppUserLogin.login(
+        session, creds.username, creds.password
+    )
     if login is None:
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return False
@@ -52,3 +67,14 @@ async def login(
         samesite="strict",
     )
     return True
+
+
+@app.get("/roles")
+async def roles(user: Auth, response: Response) -> list[str]:
+    """
+    Return list of roles the user has. Returns Unauthorized if no user is found
+    """
+    if user is None:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return []
+    return user.roles
