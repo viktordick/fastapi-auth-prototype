@@ -9,7 +9,6 @@ from sqlalchemy import not_, or_, select
 from sqlalchemy.exc import NoResultFound
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from starlette.types import ASGIApp
 
 from .dbsession import DBSession
 from .model import (
@@ -118,18 +117,17 @@ def _process_auth(
 
     if not appuser:
         return None
+    stmt = (
+        select(AppGroup)
+        .join(AppPermXGroup)
+        .join(AppPerm)
+        .join(AppUserXPerm)
+        .where(AppUserXPerm.appuser_id == appuser.id)
+    )
+    print(str(stmt))
     user = User(
         name=appuser.name,
-        roles=[
-            role.zoperole
-            for role in session.execute(
-                select(AppGroup)
-                .join(AppPermXGroup)
-                .join(AppPerm)
-                .join(AppUserXPerm)
-                .where(AppUserXPerm.appuser_id == appuser.id)
-            )
-        ],
+        roles=[role.zoperole for role in session.execute(stmt).scalars()],
     )
     # We commit here, so the authentication phase and the payload phase are
     # done in separate transactions.
@@ -195,15 +193,12 @@ def require_roles(*scopes: str) -> Callable[[_F], _F]:
 
 class SameSitePostMiddleware(BaseHTTPMiddleware):
     """
-    Rejects all POST or PUT requests that do not include a valid Sec-Fetch-Site header.
-    Allowed values: "same-origin"
+    Rejects all POST/PUT/PATCH requests that do not include a valid
+    Sec-Fetch-Site header. Allowed values: "same-origin"
     """
 
-    def __init__(self, app: ASGIApp):
-        super().__init__(app)
-
     async def dispatch(self, request, call_next):
-        if request.method in ("POST", "PUT"):
+        if request.method in ("POST", "PUT", "PATCH"):
             sec_fetch_site = request.headers.get("sec-fetch-site")
 
             if sec_fetch_site != "same-origin":

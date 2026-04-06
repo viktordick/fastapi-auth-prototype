@@ -1,14 +1,20 @@
-import os
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
+from pydantic_settings import BaseSettings
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 from starlette.middleware.base import BaseHTTPMiddleware
 
-engine = create_engine(
-    "postgresql+psycopg://zope@/perfactema", echo=os.environ.get("SQL_DEBUG_ECHO")
-)
+
+class Settings(BaseSettings):
+    connstr: str = "postgresql+psycopg://zope@/perfactema"
+    sql_debug: bool = False
+    pooling: bool = True
+
+
+settings = Settings()
 
 
 class DBSessionMiddleware(BaseHTTPMiddleware):
@@ -19,9 +25,15 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request, call_next):
+        if not hasattr(self, "engine"):
+            self.engine = create_engine(
+                settings.connstr,
+                echo=settings.sql_debug,
+                poolclass=NullPool if not settings.pooling else None,
+            )
         response = Response("Internal server error", status_code=500)
         try:
-            request.state.db = Session(engine)
+            request.state.db = Session(self.engine)
             response = await call_next(request)
             request.state.db.commit()
         except Exception:
