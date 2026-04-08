@@ -174,6 +174,19 @@ class AppStc(Base):
     )
 
 
+class AppUserXStc(Base):
+    __tablename__ = "appuserxstc"
+    id: Mapped[int] = col("appuserxstc_id", primary_key=True)
+    appuser_id: Mapped[int] = col(
+        "appuserxstc_appuser_id", ForeignKey("appuser.appuser_id")
+    )
+    appstc_id: Mapped[int] = col(
+        "appuserxstc_appstc_id", ForeignKey("appstc.appstc_id")
+    )
+    user: Mapped[AppUser] = relationship()
+    stc: Mapped[AppStc] = relationship()
+
+
 class AppStc_Paths(View):
     __tablename__ = "appstc_paths"
     __view__ = True

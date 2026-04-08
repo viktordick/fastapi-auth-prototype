@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 class Settings(BaseSettings):
     connstr: str = "postgresql+psycopg://zope@/perfactema"
     sql_debug: bool = False
-    pooling: bool = True
+    pooling: bool = True  # Set to False for testing
 
 
 settings = Settings()

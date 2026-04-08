@@ -2,23 +2,19 @@ import inspect
 from functools import wraps
 from typing import Annotated, Callable, Optional, TypeVar
 
-from fastapi import Depends, HTTPException, Response, status
+from fastapi import Depends, HTTPException, Query, Response, status
 from fastapi.security import APIKeyCookie, APIKeyHeader
 from pydantic import BaseModel
-from sqlalchemy import not_, or_, select
+from sqlalchemy import not_, or_, select, text
 from sqlalchemy.exc import NoResultFound
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from .dbsession import DBSession
 from .model import (
-    AppGroup,
-    AppPerm,
-    AppPermXGroup,
     AppUser,
     AppUserKey,
     AppUserLogin,
-    AppUserXPerm,
 )
 
 COOKIE = "__user_cookie"
@@ -33,6 +29,13 @@ ApikeyHeaderDep = Annotated[
     str,
     Depends(APIKeyHeader(name="Authorization", auto_error=False)),
 ]
+
+
+class ContextParams(BaseModel):
+    appstc_id: Optional[int] = None
+
+
+ContextParamsDep = Annotated[ContextParams, Query()]
 
 
 class User(BaseModel):
@@ -102,12 +105,17 @@ def _auth_cookie(
 def _process_auth(
     session: DBSession,
     cookie: LoginCookieDep,
-    response: Response,
     apikey: ApikeyHeaderDep,
+    params: ContextParamsDep,
+    response: Response,
 ) -> Optional[User]:
     """
     Process authorization at the beginning of (essentially) every request.
     (If a path does not depend on Auth, it is accessible anonymously)
+    1) Check for user using either a login cookie or an API key
+    2) Check appstc (organization area). If an appstc_id is provided, check that the
+       user is allowed to activate it. Otherwise select a default appstc
+    3) Check which roles the user has in this appstc
     """
     appuser = None
     if apikey is not None:
@@ -117,18 +125,79 @@ def _process_auth(
 
     if not appuser:
         return None
-    stmt = (
-        select(AppGroup)
-        .join(AppPermXGroup)
-        .join(AppPerm)
-        .join(AppUserXPerm)
-        .where(AppUserXPerm.appuser_id == appuser.id)
-    )
-    print(str(stmt))
-    user = User(
-        name=appuser.name,
-        roles=[role.zoperole for role in session.execute(stmt).scalars()],
-    )
+
+    # Check for appstc
+    appstc_id = params.appstc_id
+    if appstc_id:
+        rows = session.execute(
+            text(
+                """
+                select 1
+                from appuserxstc
+                join appstc_paths
+                  on id = :appstc_id
+                 and appuserxstc_appstc_id = any(id_path)
+                where appuserxstc_appuser_id = :appuser_id
+                limit 1
+                """
+            ),
+            {
+                "appstc_id": params.appstc_id,
+                "appuser_id": appuser.id,
+            },
+        ).all()
+        if not rows:
+            appstc_id = None
+    else:
+        # Find the "first" appstc for the user
+        rows = session.execute(
+            text(
+                """
+                select
+                  appuserxstc_appstc_id as appstc_id
+                from appuserxstc
+                join appstc_paths
+                  on id = appuserxstc_appstc_id
+                where appuserxstc_appuser_id = :appuser_id
+                order by depth, id_path
+                limit 1
+                """
+            ),
+            {
+                "appuser_id": appuser.id,
+            },
+        ).all()
+        if rows:
+            appstc_id = rows[0][0]
+
+    roles: list[str] = []
+    if appstc_id:
+        rows = session.execute(
+            text(
+                """
+                select
+                  array_agg(appgroup_zoperole)
+                from appgroup
+                join apppermxgroup
+                  on apppermxgroup_appgroup_id = appgroup_id
+                join appuserxperm
+                  on appuserxperm_appperm_id = apppermxgroup_appperm_id
+                 and appuserxperm_appuser_id = :appuser_id
+                join apppermxstc
+                  on apppermxstc_appperm_id = apppermxgroup_appperm_id
+                join appstc_paths
+                  on apppermxstc_appstc_id = any(id_path)
+                 and id = :appstc_id
+                """
+            ),
+            {
+                "appuser_id": appuser.id,
+                "appstc_id": appstc_id,
+            },
+        ).all()
+        roles = rows[0][0] or []
+
+    user = User(name=appuser.name, roles=roles)
     # We commit here, so the authentication phase and the payload phase are
     # done in separate transactions.
     session.commit()
