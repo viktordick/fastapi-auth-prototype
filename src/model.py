@@ -32,6 +32,29 @@ def verify_hash(
 class Base(DeclarativeBase):
     type_annotation_map = {str: String(), int: BigInteger()}
 
+    def __init_subclass__(cls, **kw):
+        """
+        Automatically add __tablename__ and prefix mapped columns with table name
+        """
+        # 1. Ensure tablename exists before mapping
+        if "__tablename__" not in cls.__dict__:
+            cls.__tablename__ = cls.__name__.lower()
+
+        # 2. Let SQLAlchemy build the mapper, table, columns, etc.
+        super().__init_subclass__(**kw)
+
+        # 3. Now we have cls.__table__ and real Column objects
+        if hasattr(cls, "__table__"):
+            prefix = cls.__tablename__ + "_"
+
+            for col in cls.__table__.columns:
+                # Only touch columns that still use their key as name
+                # (i.e., no explicit name was given)
+                if col.name == col.key:
+                    new_name = prefix + col.key
+                    col.name = new_name
+                    col.key = new_name  # keep ORM key in sync
+
 
 class View(DeclarativeBase):
     """
@@ -43,10 +66,9 @@ class View(DeclarativeBase):
 
 
 class AppUser(Base):
-    __tablename__ = "appuser"
-    id: Mapped[int] = col("appuser_id", primary_key=True)
-    name: Mapped[str] = col("appuser_name")
-    password: Mapped[Optional[str]] = col("appuser_password")
+    id: Mapped[int] = col(primary_key=True)
+    name: Mapped[str]
+    password: Mapped[Optional[str]]
 
     def __init__(self, name: str, password: str):
         self.name = name
@@ -58,12 +80,9 @@ class AppUser(Base):
 
 
 class AppUserKey(Base):
-    __tablename__ = "appuserkey"
-    id: Mapped[int] = col("appuserkey_id", primary_key=True)
-    appuser_id: Mapped[int] = col(
-        "appuserkey_appuser_id", ForeignKey("appuser.appuser_id")
-    )
-    key: Mapped[str] = col("appuserkey_key")
+    id: Mapped[int] = col(primary_key=True)
+    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
+    key: Mapped[str]
     appuser: Mapped[AppUser] = relationship()
 
     @staticmethod
@@ -95,14 +114,11 @@ class AppUserKey(Base):
 
 
 class AppUserLogin(Base):
-    __tablename__ = "appuserlogin"
-    id: Mapped[int] = col("appuserlogin_id", primary_key=True)
-    appuser_id: Mapped[int] = col(
-        "appuserlogin_appuser_id", ForeignKey("appuser.appuser_id")
-    )
-    cookie: Mapped[str] = col("appuserlogin_cookie")
-    nextcookie: Mapped[Optional[str]] = col("appuserlogin_nextcookie")
-    done: Mapped[bool] = col("appuserlogin_done", default=False)
+    id: Mapped[int] = col(primary_key=True)
+    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
+    cookie: Mapped[str]
+    nextcookie: Mapped[Optional[str]]
+    done: Mapped[bool] = col(default=False)
     user: Mapped[AppUser] = relationship()
 
     @classmethod
@@ -128,68 +144,47 @@ class AppUserLogin(Base):
 
 
 class AppGroup(Base):
-    __tablename__ = "appgroup"
-    id: Mapped[int] = col("appgroup_id", primary_key=True)
-    zoperole: Mapped[str] = col("appgroup_zoperole")
+    id: Mapped[int] = col(primary_key=True)
+    zoperole: Mapped[str]
 
 
 class AppPerm(Base):
-    __tablename__ = "appperm"
-    id: Mapped[int] = col("appperm_id", primary_key=True)
-    name: Mapped[str] = col("appperm_name")
+    id: Mapped[int] = col(primary_key=True)
+    name: Mapped[str]
 
 
 class AppUserXPerm(Base):
-    __tablename__ = "appuserxperm"
-    id: Mapped[int] = col("appuserxperm_id", primary_key=True)
-    appuser_id: Mapped[int] = col(
-        "appuserxperm_appuser_id", ForeignKey("appuser.appuser_id")
-    )
-    appperm_id: Mapped[int] = col(
-        "appuserxperm_appperm_id", ForeignKey("appperm.appperm_id")
-    )
+    id: Mapped[int] = col(primary_key=True)
+    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
+    appperm_id: Mapped[int] = col(ForeignKey("appperm.appperm_id"))
     user: Mapped[AppUser] = relationship()
     perm: Mapped[AppPerm] = relationship()
 
 
 class AppPermXGroup(Base):
-    __tablename__ = "apppermxgroup"
-    id: Mapped[int] = col("apppermxgroup_id", primary_key=True)
-    appgroup_id: Mapped[int] = col(
-        "apppermxgroup_appgroup_id", ForeignKey("appgroup.appgroup_id")
-    )
-    appperm_id: Mapped[int] = col(
-        "apppermxgroup_appperm_id", ForeignKey("appperm.appperm_id")
-    )
+    id: Mapped[int] = col(primary_key=True)
+    appgroup_id: Mapped[int] = col(ForeignKey("appgroup.appgroup_id"))
+    appperm_id: Mapped[int] = col(ForeignKey("appperm.appperm_id"))
     perm: Mapped[AppPerm] = relationship()
     group: Mapped[AppGroup] = relationship()
 
 
 class AppStc(Base):
-    __tablename__ = "appstc"
-    id: Mapped[int] = col("appstc_id", primary_key=True)
-    name: Mapped[str] = col("appstc_name")
-    parent_appstc_id: Mapped[Optional[int]] = col(
-        "appstc_parent_appstc_id", ForeignKey("appstc.appstc_id")
-    )
+    id: Mapped[int] = col(primary_key=True)
+    name: Mapped[str]
+    parent_appstc_id: Mapped[Optional[int]] = col(ForeignKey("appstc.appstc_id"))
 
 
 class AppUserXStc(Base):
-    __tablename__ = "appuserxstc"
-    id: Mapped[int] = col("appuserxstc_id", primary_key=True)
-    appuser_id: Mapped[int] = col(
-        "appuserxstc_appuser_id", ForeignKey("appuser.appuser_id")
-    )
-    appstc_id: Mapped[int] = col(
-        "appuserxstc_appstc_id", ForeignKey("appstc.appstc_id")
-    )
+    id: Mapped[int] = col(primary_key=True)
+    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
+    appstc_id: Mapped[int] = col(ForeignKey("appstc.appstc_id"))
     user: Mapped[AppUser] = relationship()
     stc: Mapped[AppStc] = relationship()
 
 
 class AppStc_Paths(View):
     __tablename__ = "appstc_paths"
-    __view__ = True
     id: Mapped[int] = col("id", primary_key=True)
     id_path = col("id_path", ARRAY(Integer, as_tuple=True, zero_indexes=True))
     # This is a simplified definition, the actual one does not use a recursive
