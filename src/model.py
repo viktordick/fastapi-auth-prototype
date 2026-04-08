@@ -56,7 +56,7 @@ class Base(DeclarativeBase):
                     col.key = new_name  # keep ORM key in sync
 
 
-class View(DeclarativeBase):
+class View:
     """
     Separate base for view definitions, so they are not created as tables but
     can be used like tables
@@ -81,7 +81,7 @@ class AppUser(Base):
 
 class AppUserKey(Base):
     id: Mapped[int] = col(primary_key=True)
-    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
+    appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
     key: Mapped[str]
     appuser: Mapped[AppUser] = relationship()
 
@@ -115,7 +115,7 @@ class AppUserKey(Base):
 
 class AppUserLogin(Base):
     id: Mapped[int] = col(primary_key=True)
-    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
+    appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
     cookie: Mapped[str]
     nextcookie: Mapped[Optional[str]]
     done: Mapped[bool] = col(default=False)
@@ -155,16 +155,16 @@ class AppPerm(Base):
 
 class AppUserXPerm(Base):
     id: Mapped[int] = col(primary_key=True)
-    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
-    appperm_id: Mapped[int] = col(ForeignKey("appperm.appperm_id"))
+    appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
+    appperm_id: Mapped[int] = col(ForeignKey(AppPerm.id))
     user: Mapped[AppUser] = relationship()
     perm: Mapped[AppPerm] = relationship()
 
 
 class AppPermXGroup(Base):
     id: Mapped[int] = col(primary_key=True)
-    appgroup_id: Mapped[int] = col(ForeignKey("appgroup.appgroup_id"))
-    appperm_id: Mapped[int] = col(ForeignKey("appperm.appperm_id"))
+    appgroup_id: Mapped[int] = col(ForeignKey(AppGroup.id))
+    appperm_id: Mapped[int] = col(ForeignKey(AppPerm.id))
     perm: Mapped[AppPerm] = relationship()
     group: Mapped[AppGroup] = relationship()
 
@@ -172,13 +172,13 @@ class AppPermXGroup(Base):
 class AppStc(Base):
     id: Mapped[int] = col(primary_key=True)
     name: Mapped[str]
-    parent_appstc_id: Mapped[Optional[int]] = col(ForeignKey("appstc.appstc_id"))
+    parent_appstc_id: Mapped[Optional[int]] = col(ForeignKey("appstc.id"))
 
 
 class AppUserXStc(Base):
     id: Mapped[int] = col(primary_key=True)
-    appuser_id: Mapped[int] = col(ForeignKey("appuser.appuser_id"))
-    appstc_id: Mapped[int] = col(ForeignKey("appstc.appstc_id"))
+    appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
+    appstc_id: Mapped[int] = col(ForeignKey(AppStc.id))
     user: Mapped[AppUser] = relationship()
     stc: Mapped[AppStc] = relationship()
 
