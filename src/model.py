@@ -1,9 +1,10 @@
 import os
 import uuid
+from datetime import datetime
 from typing import Optional, Self
 
 import argon2
-from sqlalchemy import BigInteger, ForeignKey, String, func, select
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func, select
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -30,7 +31,20 @@ def verify_hash(
 
 
 class Base(DeclarativeBase):
+    """
+    Base class for table mappings. Allows declaring fields without their table prefix,
+    the subclass hook will automatically rewrite them.
+    """
+
     type_annotation_map = {str: String(), int: BigInteger()}
+
+    id: Mapped[int] = col(primary_key=True)
+    createtime: Mapped[datetime] = col(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    modtime: Mapped[datetime] = col(DateTime(timezone=True), server_default=func.now())
+    creator: Mapped[Optional[str]] = col(server_default=func.db_username())
+    author: Mapped[Optional[str]] = col(server_default=func.db_username())
 
     def __init_subclass__(cls, **kw):
         """
@@ -43,7 +57,8 @@ class Base(DeclarativeBase):
         # 2. Let SQLAlchemy build the mapper, table, columns, etc.
         super().__init_subclass__(**kw)
 
-        # 3. Now we have cls.__table__ and real Column objects
+        # 3. Now we have cls.__table__ and real Column objects. Adjust these so they
+        # map to the prefixed column names on the database
         if hasattr(cls, "__table__"):
             prefix = cls.__tablename__ + "_"
 
@@ -66,7 +81,6 @@ class View(DeclarativeBase):
 
 
 class AppUser(Base):
-    id: Mapped[int] = col(primary_key=True)
     name: Mapped[str]
     password: Mapped[Optional[str]]
 
@@ -80,7 +94,6 @@ class AppUser(Base):
 
 
 class AppUserKey(Base):
-    id: Mapped[int] = col(primary_key=True)
     appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
     key: Mapped[str]
     appuser: Mapped[AppUser] = relationship()
@@ -114,7 +127,6 @@ class AppUserKey(Base):
 
 
 class AppUserLogin(Base):
-    id: Mapped[int] = col(primary_key=True)
     appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
     cookie: Mapped[str]
     nextcookie: Mapped[Optional[str]]
@@ -144,17 +156,14 @@ class AppUserLogin(Base):
 
 
 class AppGroup(Base):
-    id: Mapped[int] = col(primary_key=True)
     zoperole: Mapped[str]
 
 
 class AppPerm(Base):
-    id: Mapped[int] = col(primary_key=True)
     name: Mapped[str]
 
 
 class AppUserXPerm(Base):
-    id: Mapped[int] = col(primary_key=True)
     appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
     appperm_id: Mapped[int] = col(ForeignKey(AppPerm.id))
     user: Mapped[AppUser] = relationship()
@@ -162,7 +171,6 @@ class AppUserXPerm(Base):
 
 
 class AppPermXGroup(Base):
-    id: Mapped[int] = col(primary_key=True)
     appgroup_id: Mapped[int] = col(ForeignKey(AppGroup.id))
     appperm_id: Mapped[int] = col(ForeignKey(AppPerm.id))
     perm: Mapped[AppPerm] = relationship()
@@ -170,23 +178,22 @@ class AppPermXGroup(Base):
 
 
 class AppStc(Base):
-    id: Mapped[int] = col(primary_key=True)
     name: Mapped[str]
     parent_appstc_id: Mapped[Optional[int]] = col(ForeignKey("appstc.id"))
 
 
 class AppUserXStc(Base):
-    id: Mapped[int] = col(primary_key=True)
     appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
     appstc_id: Mapped[int] = col(ForeignKey(AppStc.id))
+
     user: Mapped[AppUser] = relationship()
     stc: Mapped[AppStc] = relationship()
 
 
 class AppPermXStc(Base):
-    id: Mapped[int] = col(primary_key=True)
     appperm_id: Mapped[int] = col(ForeignKey(AppPerm.id))
     appstc_id: Mapped[int] = col(ForeignKey(AppStc.id))
+
     perm: Mapped[AppPerm] = relationship()
     stc: Mapped[AppStc] = relationship()
 

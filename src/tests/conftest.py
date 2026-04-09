@@ -23,11 +23,24 @@ def session(connstr):
     """
     engine = create_engine(connstr)
 
+    SessionLocal = scoped_session(sessionmaker(bind=engine))
+    session = SessionLocal()
+    session.execute(
+        text("""
+            create or replace function db_username()
+            returns text
+            strict
+            language sql
+            as $$
+              select current_setting('dbutils.username', true)
+            $$
+            """)
+    )
+    session.commit()
+
     # Create tables for each test
     Base.metadata.create_all(engine)
 
-    SessionLocal = scoped_session(sessionmaker(bind=engine))
-    session = SessionLocal()
     for view in View.__subclasses__():
         name = view.__tablename__
         defn = view.definition
