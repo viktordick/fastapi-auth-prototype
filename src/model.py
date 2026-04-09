@@ -183,6 +183,14 @@ class AppUserXStc(Base):
     stc: Mapped[AppStc] = relationship()
 
 
+class AppPermXStc(Base):
+    id: Mapped[int] = col(primary_key=True)
+    appperm_id: Mapped[int] = col(ForeignKey(AppPerm.id))
+    appstc_id: Mapped[int] = col(ForeignKey(AppStc.id))
+    perm: Mapped[AppPerm] = relationship()
+    stc: Mapped[AppStc] = relationship()
+
+
 class AppStc_Paths(View):
     __tablename__ = "appstc_paths"
     id: Mapped[int] = col("id", primary_key=True)

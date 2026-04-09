@@ -4,7 +4,7 @@ from typing import Annotated, Callable, Optional, TypeVar
 
 from fastapi import Depends, HTTPException, Query, Response, status
 from fastapi.security import APIKeyCookie, APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import not_, or_, select, text
 from sqlalchemy.exc import NoResultFound
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -32,7 +32,7 @@ ApikeyHeaderDep = Annotated[
 
 
 class ContextParams(BaseModel):
-    appstc_id: Optional[int] = None
+    appstc_id: Optional[int] = Field(default=None, alias="__appstc_id")
 
 
 ContextParamsDep = Annotated[ContextParams, Query()]
@@ -142,7 +142,7 @@ def _process_auth(
                 """
             ),
             {
-                "appstc_id": params.appstc_id,
+                "appstc_id": appstc_id,
                 "appuser_id": appuser.id,
             },
         ).all()
