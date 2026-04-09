@@ -56,7 +56,7 @@ class Base(DeclarativeBase):
                     col.key = new_name  # keep ORM key in sync
 
 
-class View:
+class View(DeclarativeBase):
     """
     Separate base for view definitions, so they are not created as tables but
     can be used like tables
@@ -195,6 +195,7 @@ class AppStc_Paths(View):
     __tablename__ = "appstc_paths"
     id: Mapped[int] = col("id", primary_key=True)
     id_path = col("id_path", ARRAY(Integer, as_tuple=True, zero_indexes=True))
+    depth: Mapped[int] = col("depth")
     # This is a simplified definition, the actual one does not use a recursive
     # view, but a cached table so it can use indices. It also has some more
     # columns, but these are the only ones we need.

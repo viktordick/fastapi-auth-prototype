@@ -5,16 +5,18 @@ from typing import Annotated, Callable, Optional, TypeVar
 from fastapi import Depends, HTTPException, Query, Response, status
 from fastapi.security import APIKeyCookie, APIKeyHeader
 from pydantic import BaseModel, Field
-from sqlalchemy import not_, or_, select, text
+from sqlalchemy import any_, not_, or_, select, text
 from sqlalchemy.exc import NoResultFound
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from .dbsession import DBSession
 from .model import (
+    AppStc_Paths,
     AppUser,
     AppUserKey,
     AppUserLogin,
+    AppUserXStc,
 )
 
 COOKIE = "__user_cookie"
@@ -129,46 +131,26 @@ def _process_auth(
     # Check for appstc
     appstc_id = params.appstc_id
     if appstc_id:
-        rows = session.execute(
-            text(
-                """
-                select 1
-                from appuserxstc
-                join appstc_paths
-                  on id = :appstc_id
-                 and appuserxstc_appstc_id = any(id_path)
-                where appuserxstc_appuser_id = :appuser_id
-                limit 1
-                """
-            ),
-            {
-                "appstc_id": appstc_id,
-                "appuser_id": appuser.id,
-            },
-        ).all()
-        if not rows:
+        if not session.execute(
+            select(
+                select(1)
+                .select_from(AppUserXStc)
+                .join(AppStc_Paths, AppUserXStc.appstc_id == any_(AppStc_Paths.id_path))
+                .where(AppStc_Paths.id == appstc_id)
+                .where(AppUserXStc.appuser_id == appuser.id)
+                .exists()
+            )
+        ).scalar():
             appstc_id = None
     else:
         # Find the "first" appstc for the user
-        rows = session.execute(
-            text(
-                """
-                select
-                  appuserxstc_appstc_id as appstc_id
-                from appuserxstc
-                join appstc_paths
-                  on id = appuserxstc_appstc_id
-                where appuserxstc_appuser_id = :appuser_id
-                order by depth, id_path
-                limit 1
-                """
-            ),
-            {
-                "appuser_id": appuser.id,
-            },
-        ).all()
-        if rows:
-            appstc_id = rows[0][0]
+        appstc_id = session.execute(
+            select(AppUserXStc.appstc_id)
+            .join(AppStc_Paths, AppUserXStc.appstc_id == AppStc_Paths.id)
+            .where(AppUserXStc.appuser_id == appuser.id)
+            .order_by(AppStc_Paths.depth, AppStc_Paths.id_path)
+            .limit(1)
+        ).scalar()
 
     roles: list[str] = []
     if appstc_id:

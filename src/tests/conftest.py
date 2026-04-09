@@ -5,7 +5,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 
 from ..app import app
 from ..dbsession import settings
-from ..model import AppStc, AppUser, AppUserXStc, Base, View
+from ..model import AppStc, AppUser, Base, View
 
 
 @pytest.fixture
@@ -36,11 +36,8 @@ def session(connstr):
     root = AppStc(name="root")
     session.add_all([root])
     session.flush()
-    sub = AppStc(name="sub", parent_appstc_id=root.id)
     user = AppUser("test", "1234")
-    session.add_all([sub, user])
-    session.flush()
-    session.add_all([AppUserXStc(appuser_id=user.id, appstc_id=root.id)])
+    session.add_all([user])
     session.commit()
     yield session
     session.commit()

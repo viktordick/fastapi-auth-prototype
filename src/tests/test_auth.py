@@ -8,6 +8,7 @@ from ..model import (
     AppStc,
     AppUser,
     AppUserXPerm,
+    AppUserXStc,
 )
 
 wrong_pw = "12345"
@@ -44,7 +45,7 @@ def test_auth(client):
     assert response.status_code == 200
     assert "__user_cookie" in response.cookies
 
-    # Check roles for user
+    # Check roles for user - empty, but with status 200, so we are logged in
     client.cookies = dict(response.cookies)
     response = client.get("/roles")
     assert response.status_code == 200
@@ -75,6 +76,7 @@ def test_roles(client, session) -> None:
         appstc_ids[name] = stc.id
         session.add_all(
             [
+                AppUserXStc(appuser_id=user.id, appstc_id=stc.id),
                 AppUserXPerm(appuser_id=user.id, appperm_id=perm.id),
                 AppPermXGroup(appperm_id=perm.id, appgroup_id=group.id),
                 AppPermXStc(appperm_id=perm.id, appstc_id=stc.id),
@@ -91,5 +93,8 @@ def test_roles(client, session) -> None:
         ).cookies
     )
     for name, appstc_id in appstc_ids.items():
-        resp = client.get(f"/roles?__appstc_id={appstc_id}")
-        assert resp.json() == [name]
+        assert client.get(f"/roles?__appstc_id={appstc_id}").json() == [name]
+
+    # If calling without appstc_id, the one with the lower ID (since the depths
+    # are equal) is chosen.
+    assert client.get("/roles").json() == ["A"]
