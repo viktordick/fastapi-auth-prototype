@@ -67,7 +67,7 @@ def test_roles(client, session) -> None:
         select(AppStc).where(AppStc.parent_appstc_id.is_(None))
     ).scalar_one()
     appstc_ids = {}
-    for name in ["A", "B"]:
+    for name in ["A", "B", "Admin"]:
         stc = AppStc(name=name, parent_appstc_id=root.id)
         group = AppGroup(zoperole=name)
         perm = AppPerm(name=name)
@@ -84,12 +84,13 @@ def test_roles(client, session) -> None:
         )
 
     session.commit()
+    headers = {"sec-fetch-site": "same-origin"}
 
     client.cookies = dict(
         client.post(
             "/login",
             json={"username": "test", "password": correct_pw},
-            headers={"sec-fetch-site": "same-origin"},
+            headers=headers,
         ).cookies
     )
     for name, appstc_id in appstc_ids.items():
@@ -98,3 +99,23 @@ def test_roles(client, session) -> None:
     # If calling without appstc_id, the one with the lower ID (since the depths
     # are equal) is chosen.
     assert client.get("/roles").json() == ["A"]
+
+    # Check that required_roles is checked correctly
+    assert (
+        client.post(
+            f"/admin/rotate_cookies?__appstc_id={appstc_ids['Admin']}",
+            headers=headers,
+        ).status_code
+        == 204
+    )
+    assert (
+        client.post(
+            f"/admin/rotate_cookies?__appstc_id={appstc_ids['A']}",
+            headers=headers,
+        ).status_code
+        == 403
+    )
+
+    # Log out and check roles afterwards
+    client.cookies = dict(client.post("/logout", headers=headers).cookies)
+    assert client.get("/roles").json() == []

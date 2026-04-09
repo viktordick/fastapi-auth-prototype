@@ -4,37 +4,19 @@ from fastapi import FastAPI, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, not_, update
 
-from .auth import COOKIE, Auth, SameSitePostMiddleware, require_roles
+from .auth import (
+    COOKIE,
+    Auth,
+    SameSitePostMiddleware,
+    add_403_to_openapi,
+    require_roles,
+)
 from .dbsession import DBSession, DBSessionMiddleware
-from .model import AppUser, AppUserLogin
+from .model import AppUserLogin
 
 app = FastAPI()
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(SameSitePostMiddleware)
-
-
-@app.put("/admin/generate_user")
-@require_roles("Admin")
-async def generate_user(username: str, password: str, session: DBSession):
-    """
-    Create a new user with the given username and password
-    """
-    user: AppUser = AppUser(username, password)
-    session.add_all([user])
-
-
-@app.post("/admin/rotate_cookies")
-@require_roles("Admin")
-async def rotate_cookies(session: DBSession):
-    """
-    Something that would usually rather be done periodically and can not be triggered
-    manually.
-    """
-    session.execute(
-        update(AppUserLogin)
-        .where(not_(AppUserLogin.done))
-        .values(nextcookie=func.uuidv4())
-    )
 
 
 class Credentials(BaseModel):
@@ -46,7 +28,13 @@ class Credentials(BaseModel):
     password: str
 
 
-@app.post("/login")
+@app.post(
+    "/login",
+    responses={
+        200: {"model": bool, "description": "Login successful, cookie set"},
+        401: {"model": bool, "description": "Login failed"},
+    },
+)
 async def login(
     creds: Credentials,
     session: DBSession,
@@ -69,6 +57,11 @@ async def login(
     return True
 
 
+@app.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> None:
+    response.delete_cookie(COOKIE)
+
+
 @app.get("/roles")
 async def roles(user: Auth, response: Response) -> list[str]:
     """
@@ -78,3 +71,20 @@ async def roles(user: Auth, response: Response) -> list[str]:
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return []
     return user.roles
+
+
+@app.post("/admin/rotate_cookies", status_code=status.HTTP_204_NO_CONTENT)
+@require_roles("Admin")
+async def rotate_cookies(session: DBSession) -> None:
+    """
+    Something that would usually rather be done periodically and can not be triggered
+    manually. Just to demonstrate require_roles.
+    """
+    session.execute(
+        update(AppUserLogin)
+        .where(not_(AppUserLogin.done))
+        .values(nextcookie=func.uuidv4())
+    )
+
+
+add_403_to_openapi(app)

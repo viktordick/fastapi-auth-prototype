@@ -3,6 +3,7 @@ from functools import wraps
 from typing import Annotated, Callable, Optional, TypeVar
 
 from fastapi import Depends, HTTPException, Query, Response, status
+from fastapi.routing import APIRoute
 from fastapi.security import APIKeyCookie, APIKeyHeader
 from pydantic import BaseModel, Field
 from sqlalchemy import any_, not_, or_, select, text
@@ -192,28 +193,31 @@ Auth = Annotated[Optional[User], Depends(_process_auth)]
 _F = TypeVar("_F", bound=Callable[..., object])
 
 
-def require_roles(*scopes: str) -> Callable[[_F], _F]:
+def require_roles(*roles: str) -> Callable[[_F], _F]:
     """
     Decorator to check for given roles
     """
 
-    def require_scopes(required_scopes: tuple[str, ...]):
+    def require(required: tuple[str, ...]):
 
         def checker(user: Auth):
             # Check if all required scopes are present
             roles = set() if user is None else user.roles
-            missing = set(required_scopes) - set(roles)
+            missing = set(required) - set(roles)
             if missing:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Missing required permissions: {', '.join(missing)}",
+                    detail={
+                        "msg": "Missing required permissions",
+                        "missing": list(missing),
+                    },
                 )
 
             return True
 
         return checker
 
-    dep = Depends(require_scopes(scopes))
+    dep = Depends(require(roles))
 
     def decorator(func: _F) -> _F:
         sig = inspect.signature(func)
@@ -237,9 +241,30 @@ def require_roles(*scopes: str) -> Callable[[_F], _F]:
 
         # attach the new signature so FastAPI sees the dependency
         wrapper.__signature__ = new_sig  # type: ignore
+        # Inject OpenAPI metadata
+        wrapper.__dict__["required_roles"] = roles
         return wrapper  # type: ignore
 
     return decorator
+
+
+def add_403_to_openapi(app):
+    """
+    Call this after all routes are added.
+    """
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            endpoint = route.endpoint
+            roles = getattr(endpoint, "required_roles", None)
+            if roles:
+                # Add 403 response if not already present
+                route.responses.setdefault(
+                    403,
+                    {
+                        "description": "Forbidden – missing required permissions",
+                        "model": list[str],
+                    },
+                )
 
 
 class SameSitePostMiddleware(BaseHTTPMiddleware):
