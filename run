@@ -1,4 +1,4 @@
 #!/bin/bash
 source venv/bin/activate
 cd src
-fastapi dev ./app.py
+fastapi $1 ./app.py

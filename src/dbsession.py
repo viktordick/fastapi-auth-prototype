@@ -28,6 +28,7 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
         if not hasattr(self, "engine"):
             self.engine = create_engine(
                 settings.connstr,
+                pool_pre_ping=True,
                 echo=settings.sql_debug,
                 poolclass=NullPool if not settings.pooling else None,
             )
