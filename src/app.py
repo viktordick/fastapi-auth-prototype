@@ -2,11 +2,12 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, Response, status
 from pydantic import BaseModel
-from sqlalchemy import func, not_, update
+from sqlalchemy import func, not_, or_, select, update
 
 from .auth import (
     COOKIE,
     Auth,
+    LoginCookieDep,
     SameSitePostMiddleware,
     add_403_to_openapi,
     require_roles,
@@ -47,6 +48,9 @@ async def login(
     if login is None:
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return False
+    if not login.cookie:
+        # Will never happen
+        return False
     response.set_cookie(
         key=COOKIE,
         value=login.cookie,
@@ -58,7 +62,22 @@ async def login(
 
 
 @app.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response) -> None:
+async def logout(
+    user: Auth, session: DBSession, cookie: LoginCookieDep, response: Response
+) -> None:
+    login = session.execute(
+        select(AppUserLogin).where(
+            or_(
+                AppUserLogin.cookie == cookie,
+                AppUserLogin.nextcookie == cookie,
+            ),
+            not_(AppUserLogin.done),
+        )
+    ).scalar_one_or_none()
+    if login:
+        login.done = True
+        login.cookie = None
+        login.nextcookie = None
     response.delete_cookie(COOKIE)
 
 

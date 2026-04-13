@@ -128,7 +128,7 @@ class AppUserKey(Base):
 
 class AppUserLogin(Base):
     appuser_id: Mapped[int] = col(ForeignKey(AppUser.id))
-    cookie: Mapped[str]
+    cookie: Mapped[Optional[str]]
     nextcookie: Mapped[Optional[str]]
     done: Mapped[bool] = col(default=False)
     user: Mapped[AppUser] = relationship()

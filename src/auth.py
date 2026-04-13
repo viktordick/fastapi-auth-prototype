@@ -1,4 +1,5 @@
 import inspect
+from dataclasses import dataclass
 from functools import wraps
 from typing import Annotated, Callable, Optional, TypeVar
 
@@ -7,7 +8,6 @@ from fastapi.routing import APIRoute
 from fastapi.security import APIKeyCookie, APIKeyHeader
 from pydantic import BaseModel, Field
 from sqlalchemy import any_, not_, or_, select, text
-from sqlalchemy.exc import NoResultFound
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -41,7 +41,8 @@ class ContextParams(BaseModel):
 ContextParamsDep = Annotated[ContextParams, Query()]
 
 
-class User(BaseModel):
+@dataclass
+class AuthInfo:
     """
     Authentication information for the current user
     """
@@ -75,20 +76,20 @@ def _auth_cookie(
     longer sending a cookie if we don't remind them with every request that
     this cookie is to be set).
     """
-    try:
-        login, user = session.execute(
-            select(AppUserLogin, AppUser)
-            .where(
-                or_(
-                    AppUserLogin.cookie == cookie,
-                    AppUserLogin.nextcookie == cookie,
-                ),
-                not_(AppUserLogin.done),
-            )
-            .where(AppUserLogin.appuser_id == AppUser.id)
-        ).one()
-    except NoResultFound:
+    row = session.execute(
+        select(AppUserLogin, AppUser)
+        .join_from(AppUserLogin, AppUser)
+        .where(
+            or_(
+                AppUserLogin.cookie == cookie,
+                AppUserLogin.nextcookie == cookie,
+            ),
+            not_(AppUserLogin.done),
+        )
+    ).first()
+    if not row:
         return None
+    login, user = row
 
     send_cookie = login.nextcookie or login.cookie
     if cookie == login.nextcookie:
@@ -111,7 +112,7 @@ def _process_auth(
     apikey: ApikeyHeaderDep,
     params: ContextParamsDep,
     response: Response,
-) -> Optional[User]:
+) -> Optional[AuthInfo]:
     """
     Process authorization at the beginning of (essentially) every request.
     (If a path does not depend on Auth, it is accessible anonymously)
@@ -180,14 +181,14 @@ def _process_auth(
         ).all()
         roles = rows[0][0] or []
 
-    user = User(name=appuser.name, roles=roles)
+    result = AuthInfo(name=appuser.name, roles=roles)
     # We commit here, so the authentication phase and the payload phase are
     # done in separate transactions.
     session.commit()
-    return user
+    return result
 
 
-Auth = Annotated[Optional[User], Depends(_process_auth)]
+Auth = Annotated[Optional[AuthInfo], Depends(_process_auth)]
 
 
 _F = TypeVar("_F", bound=Callable[..., object])
